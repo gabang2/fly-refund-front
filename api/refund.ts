@@ -1,15 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-export async function POST(req: NextRequest) {
+export const config = {
+  runtime: 'edge',
+};
+
+export default async function handler(req: Request) {
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { 
+      status: 405, 
+      headers: { 'Content-Type': 'application/json' } 
+    });
+  }
+
   try {
     const { purchaseId } = await req.json();
     if (!purchaseId) {
-      return NextResponse.json({ error: 'purchaseId is required' }, { status: 400 });
+      return new Response(JSON.stringify({ error: 'purchaseId is required' }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.VITE_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
 
@@ -21,23 +34,35 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (fetchErr || !purchase) {
-      return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
+      return new Response(JSON.stringify({ error: 'Purchase not found' }), { 
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     if (purchase.status === 'refunded') {
-      return NextResponse.json({ error: 'Already refunded' }, { status: 400 });
+      return new Response(JSON.stringify({ error: 'Already refunded' }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     const orderId = purchase.extra_data?.order_id;
     if (!orderId) {
-      return NextResponse.json({ error: 'No order_id found' }, { status: 400 });
+      return new Response(JSON.stringify({ error: 'No order_id found' }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // 금액 파싱 (price_label: "9.90 USD" 형식)
     const amountMatch = (purchase.price_label ?? '').match(/([\d.]+)/);
     const amountCents = amountMatch ? Math.round(parseFloat(amountMatch[1]) * 100) : 0;
     if (!amountCents) {
-      return NextResponse.json({ error: 'Could not parse amount' }, { status: 400 });
+      return new Response(JSON.stringify({ error: 'Could not parse amount' }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // Polar 환불 요청
@@ -58,7 +83,10 @@ export async function POST(req: NextRequest) {
     const polarData = await polarRes.json();
     if (!polarRes.ok) {
       console.error('Polar refund failed:', polarData);
-      return NextResponse.json({ error: 'Polar refund failed', detail: polarData }, { status: 500 });
+      return new Response(JSON.stringify({ error: 'Polar refund failed', detail: polarData }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // DB 상태 업데이트
@@ -71,9 +99,15 @@ export async function POST(req: NextRequest) {
       console.error('DB update failed after Polar refund:', updateErr);
     }
 
-    return NextResponse.json({ success: true });
+    return new Response(JSON.stringify({ success: true }), { 
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   } catch (err: any) {
     console.error('Refund route error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return new Response(JSON.stringify({ error: err.message }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
