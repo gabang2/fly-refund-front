@@ -68,7 +68,7 @@
   "loginSub": "비밀번호 없이 매직링크로 간편 로그인",
   "emailLabel": "이메일 주소", "emailPh": "example@email.com",
   "magicBtn": "매직링크 보내기 ✉", "orDivider": "── 또는 ──",
-  "googleBtn": "G  Google로 계속하기",
+  "googleBtn": "Google로 계속하기",
   "loginDisclaimer": "로그인하면 이용약관 및 개인정보처리방침에 동의한 것으로 간주합니다.",
   "loginBenefitsTitle": "로그인 시 혜택",
   "loginBenefits": ["계산 결과 자동 저장", "커뮤니티 글 작성"],

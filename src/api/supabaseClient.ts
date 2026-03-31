@@ -8,6 +8,15 @@ if (!supabaseUrl || supabaseUrl === 'YOUR_SUPABASE_URL') {
 }
 
 export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co', 
+  supabaseUrl || 'https://placeholder.supabase.co',
   supabaseAnonKey || 'placeholder'
 );
+
+// 유효하지 않은 refresh token이 localStorage에 남아 있을 경우 자동 정리
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_OUT') {
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('sb-')) localStorage.removeItem(key);
+    });
+  }
+});

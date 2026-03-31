@@ -18,8 +18,10 @@ export const AdBanner = ({
       // @ts-ignore
       (window.adsbygoogle = window.adsbygoogle || []).push({});
     } catch (e) {
-      // 개발 환경에서는 광고가 로드되지 않아 에러가 날 수 있습니다.
-      console.error('AdSense error:', e);
+      // 개발 환경에서는 광고 스크립트가 없어 에러가 날 수 있습니다.
+      if (import.meta.env.DEV) {
+        console.warn('AdSense: 개발 환경에서는 광고가 로드되지 않습니다.', e);
+      }
     }
   }, []);
 
