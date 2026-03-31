@@ -46,7 +46,7 @@ export default function LandingPage({ user, t, locale, onCalculate, onLogin, onL
 
         {/* Google AdSense Banner at the Bottom of form */}
         <div style={{ marginTop: '20px', padding: '10px 0' }}>
-          <AdBanner dataAdSlot="YOUR_AD_SLOT_ID" />
+          <AdBanner dataAdSlot="5615147776" />
         </div>
       </div>
     </div>
