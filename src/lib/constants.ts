@@ -1,8 +1,8 @@
 export const C = {
-  bg: "#ffffff", surface: "#f7f7f8", border: "#e5e5e8",
-  textPrimary: "#141416", textSecondary: "#737379",
-  accent: "#3875F6", accentLight: "#EDF2FF",
-  success: "#12B76A", successLight: "#ECFDF5",
-  warn: "#F59E0B", warnLight: "#FFFBEB",
+  bg: "#FFFFFF", surface: "#F7F5F2", border: "#DDD9D3",
+  textPrimary: "#1C1916", textSecondary: "#6B6560",
+  accent: "#1B3A6B", accentLight: "#EBF0FA",
+  success: "#1A7340", successLight: "#E8F5EE",
+  warn: "#C2510C", warnLight: "#FEF2E8",
   kakao: "#FEE500",
 };

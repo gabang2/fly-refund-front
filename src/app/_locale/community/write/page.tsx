@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Btn } from "@/components/ui/button";
-import { Chip } from "@/components/ui/chip";
 import { C } from "@/lib/constants";
 import { createPost, updatePost } from "@/api/posts";
+import { CalcSummaryCard } from "@/components/community/calc-summary-card";
 
 interface WritePageProps {
   user: any;
@@ -45,7 +45,6 @@ export default function WritePage({ user, t, locale, sharedData, onLocaleChange,
 
   const [title, setTitle] = useState(getAutoTitle());
   const [content, setContent] = useState(sharedData?.content || "");
-  const [tag, setTag] = useState(sharedData?.tag || t.filters[1]); // 기본값: 첫 번째 카테고리
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -64,10 +63,10 @@ export default function WritePage({ user, t, locale, sharedData, onLocaleChange,
       content,
       airline: airlineName,
       route,
-      tag,
       locale,
       success: !!sharedData?.result_data?.amount || sharedData?.success,
       amt: sharedData?.result_data?.amount ? `${sharedData.result_data.currency}${sharedData.result_data.amount.toLocaleString()}` : (sharedData?.amt || undefined),
+      result_data: sharedData?.result_data || undefined,
     };
 
     const { error } = sharedData?.id 
@@ -96,15 +95,6 @@ export default function WritePage({ user, t, locale, sharedData, onLocaleChange,
       </div>
 
       <div style={{ padding: "24px 20px", display: "flex", flexDirection: "column" }}>
-        {/* 카테고리 선택 */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 10 }}>{isKr ? '카테고리 선택' : 'Category'}</div>
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-            {t.filters.slice(1).map((f: string) => (
-              <Chip key={f} label={f} active={tag === f} onClick={() => setTag(f)} />
-            ))}
-          </div>
-        </div>
 
         <input 
           placeholder={t.postTitlePh || "제목을 입력하세요"}
@@ -114,18 +104,15 @@ export default function WritePage({ user, t, locale, sharedData, onLocaleChange,
         />
 
         {sharedData && (sharedData.input_data || sharedData.amt) && (
-          <div style={{ background: "#f8f9fa", borderRadius: 12, padding: "16px", marginBottom: 24, border: `1px solid #eee` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: "#fff", padding: "2px 8px", borderRadius: 4, border: `1px solid ${C.accentLight}` }}>
-                {getLocalizedReg(sharedData.result_data?.regulation || sharedData.regulation)}
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: C.success }}>
-                {sharedData.result_data?.amount ? `${sharedData.result_data.currency}${sharedData.result_data.amount.toLocaleString()}` : sharedData.amt} 보상 확보
-              </span>
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: C.textPrimary }}>
-              ✈️ {sharedData.input_data?.dep || sharedData.route?.split('→')[0]} → {sharedData.input_data?.arr || sharedData.route?.split('→')[1]}
-            </div>
+          <div style={{ marginBottom: 24 }}>
+            <CalcSummaryCard
+              regulation={sharedData.result_data?.regulation || sharedData.regulation}
+              amt={sharedData.result_data?.amount
+                ? `${sharedData.result_data.currency}${sharedData.result_data.amount.toLocaleString()}`
+                : sharedData.amt}
+              route={`${sharedData.input_data?.dep || sharedData.route?.split('→')[0]} → ${sharedData.input_data?.arr || sharedData.route?.split('→')[1]}`}
+              locale={locale}
+            />
           </div>
         )}
 

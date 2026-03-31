@@ -35,7 +35,12 @@ export const getPosts = async (params: {
   }
 
   const { data, error, count } = await query;
-  
+
+  // 416: range가 전체 데이터 수를 초과 → 더 이상 데이터 없음으로 처리
+  if (error && (error as any).code === 'PGRST103') {
+    return { data: [] as Post[], error: null, count };
+  }
+
   // 댓글 수 매핑: comments: [{ count: n }] -> comment_count: n
   const mappedData = data?.map(post => ({
     ...post,

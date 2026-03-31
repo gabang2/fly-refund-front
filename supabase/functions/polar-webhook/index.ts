@@ -13,51 +13,67 @@ serve(async (req) => {
 
     console.log(`Received Polar webhook event: ${type}`, JSON.stringify(data, null, 2))
 
-    // checkout.created 또는 order.created 둘 다 처리 가능하지만, 
-    // 실제 결제 완료 후 DB에 넣으려면 order.created가 적절합니다.
     if (type === 'order.created') {
       const order = data
       const metadata = order.metadata || {}
-      
       const { userId, calcId, productType } = metadata
 
       if (userId && productType) {
-        let extraData: any = { 
+        const extraData: any = {
           order_id: order.id,
           customer_id: order.customer_id,
-          customer_email: order.customer_email
+          customer_email: order.customer_email,
         }
 
-        // 1. 만약 AI 분석 상품이라면, 분석을 미리 수행하여 저장
-        if (productType === 'detailed_analysis' && calcId) {
-          try {
-            console.log(`Starting AI analysis for calculation ${calcId}...`)
-            // 현재 프로젝트 구조상 내부 API 호출이 어려우므로 
-            // 프론트엔드에서 데이터가 비어있을 때 수행하거나, 여기서 AI API를 직접 호출해야 합니다.
-            // 일단은 'pending' 상태로 두고 프론트엔드에서 보완하도록 하겠습니다.
-            extraData.analysis_status = 'pending'
-          } catch (e) {
-            console.error('AI Analysis failed during webhook:', e)
-          }
-        }
-
-        // 2. 결제 내역 저장
-        const { error } = await supabase
+        // 결제 내역 저장 (ai_status = PROCESSING으로 시작)
+        const { data: newPurchase, error } = await supabase
           .from('purchases')
           .insert([{
             user_id: userId,
             calc_id: calcId || null,
             product_type: productType,
             status: 'paid',
+            ai_status: 'PROCESSING',
             price_label: `${order.amount / 100} ${order.currency.toUpperCase()}`,
-            extra_data: extraData
+            extra_data: extraData,
           }])
+          .select()
+          .single()
 
         if (error) {
           console.error('Error inserting purchase:', error)
           throw error
         }
-        console.log(`Successfully recorded purchase for user ${userId}, product ${productType}`)
+
+        console.log(`Successfully recorded purchase for user ${userId}, product ${productType}, purchase id: ${newPurchase.id}`)
+
+        // AI 처리를 비동기로 시작 (백그라운드)
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+        const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+
+        const triggerAI = async () => {
+          try {
+            const res = await fetch(`${supabaseUrl}/functions/v1/process-ai-result`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${anonKey}`,
+              },
+              body: JSON.stringify({ purchaseId: newPurchase.id }),
+            })
+            console.log(`process-ai-result triggered: ${res.status}`)
+          } catch (e) {
+            console.error('Failed to trigger process-ai-result:', e)
+          }
+        }
+
+        // @ts-ignore - Deno EdgeRuntime
+        if (typeof EdgeRuntime !== 'undefined') {
+          // @ts-ignore
+          EdgeRuntime.waitUntil(triggerAI())
+        } else {
+          triggerAI().catch(console.error)
+        }
       } else {
         console.warn('Missing metadata in Polar webhook:', metadata)
       }

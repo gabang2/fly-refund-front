@@ -29,11 +29,15 @@ export const getPurchasesByCalcId = async (calcId: string) => {
 };
 
 export const refundPurchase = async (purchaseId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await supabase.functions.invoke('refund-purchase', {
+    body: { purchaseId },
+  });
+  if (error) return { data: null, error: error.message ?? 'Refund failed' };
+
+  const { data: purchase, error: fetchError } = await supabase
     .from('purchases')
-    .update({ status: 'refunded' })
+    .select('*')
     .eq('id', purchaseId)
-    .select()
     .single();
-  return { data: data as Purchase, error };
+  return { data: purchase as Purchase, error: fetchError };
 };

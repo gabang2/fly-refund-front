@@ -6,16 +6,21 @@ export interface Profile {
   updated_at?: string;
 }
 
+export type AiStatus = 'PROCESSING' | 'FAILED' | 'FAILED_1' | 'FAILED_2' | 'FAILED_3' | 'REFUND' | 'COMPLETED';
+
 export interface Purchase {
   id?: string;
   user_id?: string;
   calc_id?: string | null;
-  product_type: 'email_draft' | 'detailed_analysis' | 'flight_alert';
+  product_type: 'email_draft' | 'detailed_analysis';
   status: 'paid' | 'refunded';
+  ai_status?: AiStatus;
   price_label?: string;
   extra_data?: {
-    email_content?: string;
-    calc_input?: any;
+    analysis_kr?: string;
+    analysis_en?: string;
+    email_kr?: string;
+    email_en?: string;
     [key: string]: any;
   };
   created_at?: string;

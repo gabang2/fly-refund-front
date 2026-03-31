@@ -93,7 +93,7 @@ type Jurisdiction =
   | 'GACA' | 'DGCA' | 'Vietnam' | 'ANAC'
   | 'Montreal';
 
-function getJurisdiction(
+export function getJurisdiction(
   depCountry: string,
   arrCountry: string,
   airline: AirlineData

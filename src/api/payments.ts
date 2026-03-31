@@ -5,7 +5,7 @@ export interface Payment {
   user_id: string;
   amount: number;
   currency: string;
-  item_type: 'detailed_result' | 'email_draft' | 'price_alert';
+  item_type: 'detailed_result' | 'email_draft';
   target_id?: string; // calculation_id 등 관련 ID
   status: 'completed' | 'refunded';
   created_at: string;

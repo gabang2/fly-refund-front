@@ -4,12 +4,74 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
-    <title>FlyRefund</title>
+    <title>FlyRefund — Flight Delay & Cancellation Compensation Calculator</title>
+    <meta name="description" content="Was your flight delayed, cancelled, or overbooked? Calculate your compensation in seconds — EU261, US DOT, UK261, Montreal Convention and more. Free, instant, no sign-up needed." />
+    <meta name="keywords" content="flight delay compensation, flight cancellation refund, EU261 calculator, airline compensation, passenger rights, 항공 지연 보상, 항공편 취소 환불, 보상금 계산기" />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="canonical" href="https://fly-refund-check.vercel.app" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="FlyRefund" />
+    <meta property="og:title" content="Flight Delayed or Cancelled? Get Up to €600 — FlyRefund" />
+    <meta property="og:description" content="Free compensation calculator for delayed, cancelled, or overbooked flights. EU261, US DOT, UK261 and more. Know your rights in seconds." />
+    <meta property="og:image" content="https://fly-refund-check.vercel.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://fly-refund-check.vercel.app" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ko_KR" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Flight Delayed or Cancelled? Get Up to €600 — FlyRefund" />
+    <meta name="twitter:description" content="Free compensation calculator for delayed, cancelled, or overbooked flights. EU261, US DOT, UK261 and more." />
+    <meta name="twitter:image" content="https://fly-refund-check.vercel.app/og-image.png" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "FlyRefund",
+      "url": "https://fly-refund-check.vercel.app",
+      "description": "Free flight delay and cancellation compensation calculator. Supports EU261, US DOT, UK261, Montreal Convention and more.",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "All",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "inLanguage": ["en", "ko"]
+    }
+    </script>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- Google AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7667711144672170"
+         crossorigin="anonymous"></script>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-T8CFK28NZY"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-T8CFK28NZY');
+    </script>
     <style>
-      body {
+      html, body, #root {
+        height: 100%;
         margin: 0;
         padding: 0;
+      }
+      body {
         background-color: #e8e8ea;
+        overflow: hidden; /* Keep hidden on body to prevent double scrollbars, but we'll ensure #root or its child scrolls */
+      }
+      #root {
+        overflow: hidden;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
       }
     </style>
   </head>

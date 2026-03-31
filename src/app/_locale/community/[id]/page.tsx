@@ -60,10 +60,11 @@ export default function PostDetailPage({ user, t, post: initialPost, locale, onB
         {loading ? (
           <div style={{ textAlign: "center", padding: "40px 0", color: C.textSecondary }}>{t.loading || "Loading..."}</div>
         ) : post ? (
-          <PostDetail 
-            user={user} 
-            post={post} 
-            t={t} 
+          <PostDetail
+            user={user}
+            post={post}
+            t={t}
+            locale={locale}
             onEdit={() => onEditPost?.(post)}
             onDelete={handleDelete}
           />

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { PostList } from "@/components/community/post-list";
-import { Chip } from "@/components/ui/chip";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { C } from "@/lib/constants";
 import { getPosts, Post } from "@/api/posts";
+import { PostCardSkeleton } from "@/components/ui/skeleton";
 
 interface CommunityPageProps {
   t: any;
@@ -17,7 +17,6 @@ interface CommunityPageProps {
 export default function CommunityPage({ t, locale, onLocaleChange, onWrite, onPostClick }: CommunityPageProps) {
   const location = useLocation();
   const [posts, setPosts] = useState<Post[]>([]);
-  const [filter, setFilter] = useState(t.filters[0]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -44,18 +43,18 @@ export default function CommunityPage({ t, locale, onLocaleChange, onWrite, onPo
     const { data, error } = await getPosts({
       locale,
       search,
-      tag: filter,
       page: currentPage,
       limit: 10
     });
 
-    if (!error && data) {
+    if (error) {
+      setHasMore(false);
+    } else if (data) {
       if (isNew) {
-        setPosts([...data]); // 새로운 배열로 교체하여 참조 변경 강제
+        setPosts([...data]);
         setPage(0);
       } else {
         setPosts(prev => {
-          // 중복 데이터 방지 (ID 기준 필터링)
           const newPosts = data.filter(item => !prev.some(p => p.id === item.id));
           return [...prev, ...newPosts];
         });
@@ -67,11 +66,11 @@ export default function CommunityPage({ t, locale, onLocaleChange, onWrite, onPo
 
   // 컴포넌트 마운트 시 및 경로 변경 시(탭 클릭 포함) 강제 새로고침
   useEffect(() => {
-    setPosts([]); // 즉시 비우기
-    setPage(0); // 페이지 초기화
-    setHasMore(true); // 더 가져올 데이터 상태 초기화
+    setPosts([]);
+    setPage(0);
+    setHasMore(true);
     fetchPosts(true);
-  }, [locale, filter, search, location.key]);
+  }, [locale, search, location.key]);
 
   useEffect(() => {
     if (page > 0) fetchPosts();
@@ -97,21 +96,23 @@ export default function CommunityPage({ t, locale, onLocaleChange, onWrite, onPo
               onChange={(e) => setSearch(e.target.value)}
               style={{ width: "100%", height: 40, border: `1px solid ${C.border}`, borderRadius: 10, padding: "0 36px 0 12px", fontSize: 14, outline: "none", background: C.surface, boxSizing: "border-box" }}
             />
-            <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>🔍</span>
+            <svg style={{ position: "absolute", right: 12, top: 11 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.textSecondary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           </div>
         </div>
 
         <div style={{ height: 1, background: C.border }} />
-        <div style={{ display: "flex", gap: 8, padding: "10px 20px", overflowX: "auto" }}>
-          {t.filters.map((f: string) => <Chip key={f} label={f} active={filter === f} onClick={() => { setFilter(f); setPage(0); }} />)}
-        </div>
-        <div style={{ height: 1, background: C.border }} />
       </div>
 
       <div style={{ padding: "12px 20px 100px" }}>
-        <PostList posts={posts} t={t} onPostClick={onPostClick} />
+        {loading && posts.length === 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {Array.from({ length: 5 }).map((_, i) => <PostCardSkeleton key={i} />)}
+          </div>
+        ) : (
+          <PostList posts={posts} t={t} onPostClick={onPostClick} />
+        )}
         <div ref={lastPostElementRef} style={{ height: 20 }} />
-        {loading && <div style={{ textAlign: "center", padding: 20, color: C.textSecondary }}>{t.loading}</div>}
+        {loading && posts.length > 0 && <div style={{ textAlign: "center", padding: 20, color: C.textSecondary }}>{t.loading}</div>}
         {!hasMore && posts.length > 0 && <div style={{ textAlign: "center", padding: 20, color: C.textSecondary, fontSize: 12 }}>{t.lastPost}</div>}
         {posts.length === 0 && !loading && (
           <div style={{ textAlign: "center", padding: "100px 0", color: C.textSecondary }}>

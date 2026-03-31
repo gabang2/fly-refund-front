@@ -15,6 +15,7 @@ import { ShareActionCard } from "@/components/ui/share-action-card";
 
 interface MyInfoPageProps {
   user: any;
+  profile?: any;
   t: any;
   locale: string;
   onLocaleChange: (l: string) => void;
@@ -26,7 +27,7 @@ interface MyInfoPageProps {
 
 type TabType = 'history' | 'purchases' | 'posts' | 'comments';
 
-export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, onHistoryClick, onShare, onPurchaseClick }: MyInfoPageProps) {
+export default function MyInfoPage({ user, profile, t, locale, onLocaleChange, onLogin, onHistoryClick, onShare, onPurchaseClick }: MyInfoPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [history, setHistory] = useState<Calculation[]>([]);
@@ -34,6 +35,7 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
   const [myPosts, setMyPosts] = useState<Post[]>([]);
   const [myComments, setMyComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refundingId, setRefundingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('history');
 
   useEffect(() => {
@@ -56,7 +58,15 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
 
   const handleRefund = async (purchase: Purchase) => {
     if (!purchase.id) return;
-    const { data } = await refundPurchase(purchase.id);
+    const confirmed = window.confirm(isKr ? '환불을 신청하시겠습니까? 환불 후 결과물에 접근할 수 없습니다.' : 'Request a refund? You will lose access to the result.');
+    if (!confirmed) return;
+    setRefundingId(purchase.id);
+    const { data, error } = await refundPurchase(purchase.id);
+    setRefundingId(null);
+    if (error) {
+      alert(isKr ? `환불 실패: ${error}` : `Refund failed: ${error}`);
+      return;
+    }
     if (data) {
       setPurchases(prev => prev.map(p => p.id === purchase.id ? { ...p, status: 'refunded' } : p));
     }
@@ -80,10 +90,11 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
     return new Date(dateStr).toLocaleDateString();
   };
 
-  const productLabel = (type: string) =>
-    type === 'email_draft'
-      ? (locale === 'kr' ? '이메일 초안' : 'Email Draft')
-      : (locale === 'kr' ? '최저가 알림' : 'Price Alert');
+  const productLabel = (type: string) => {
+    if (type === 'email_draft') return locale === 'kr' ? '이메일 초안' : 'Email Draft';
+    if (type === 'detailed_analysis') return locale === 'kr' ? '상세 분석' : 'Detailed Analysis';
+    return type;
+  };
 
   const isKr = locale === 'kr';
 
@@ -107,7 +118,6 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
       <div style={{ padding: '16px 20px 100px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {!user ? (
           <Card style={{ padding: 20, textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>👤</div>
             <div style={{ fontSize: 16, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>{t.myInfoLoginTitle}</div>
             <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 16 }}>{t.myInfoLoginDesc}</div>
             <Btn onClick={onLogin} sx={{ width: '100%' }}>{t.myInfoLoginBtn}</Btn>
@@ -117,13 +127,27 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
             {/* 프로필 카드 */}
             <Card style={{ padding: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-                <div style={{ fontSize: 40 }}>👤</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: C.textPrimary, wordBreak: 'break-all' }}>{user.email}</div>
-                  <div style={{ fontSize: 13, color: C.textSecondary }}>{t.welcome || 'Welcome back!'}</div>
+                {/* 이니셜 아바타 */}
+                <div style={{
+                  width: 52, height: 52, borderRadius: '50%',
+                  background: C.accent,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <span style={{ fontSize: 22, fontWeight: 700, color: '#fff' }}>
+                    {(profile?.full_name ?? user.email ?? '?')[0].toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: C.textPrimary, marginBottom: 2 }}>
+                    {profile?.full_name ?? (isKr ? '닉네임 없음' : 'No nickname')}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user.email}
+                  </div>
                 </div>
               </div>
-              <Btn onClick={handleLogout} sx={{ width: '100%', background: '#f0f0f0', color: C.textPrimary }}>
+              <Btn onClick={handleLogout} sx={{ width: '100%', background: C.surface, color: C.textSecondary, border: `1px solid ${C.border}` }}>
                 {t.logout || 'Logout'}
               </Btn>
             </Card>
@@ -208,10 +232,7 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
                                     cursor: 'pointer' 
                                   }}
                                 >
-                                  💬 {isKr ? '공유하기' : 'Share'}
-                                  <span style={{ fontSize: 10, background: '#fff', padding: '1px 5px', borderRadius: 4, marginLeft: 2, border: `1px solid ${C.accent}` }}>
-                                    {isKr ? '무료' : 'Free'}
-                                  </span>
+                                  {isKr ? '공유하기' : 'Share'}
                                 </button>
                               )}
                             </div>
@@ -234,7 +255,6 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
                       return (
                         <Card key={p.id || idx} style={{ padding: 16 }}>
                           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                            <div style={{ fontSize: 28 }}>{p.product_type === 'email_draft' ? '📧' : '✈️'}</div>
                             <div style={{ flex: 1 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                                 <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{productLabel(p.product_type)}</div>
@@ -270,9 +290,15 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
                               )}
                               <button
                                 onClick={() => handleRefund(p)}
-                                style={{ flex: 1, height: 34, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.textSecondary, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                disabled={refundingId === p.id}
+                                style={{ flex: 1, height: 34, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.textSecondary, fontSize: 12, fontWeight: 600, cursor: refundingId === p.id ? 'not-allowed' : 'pointer', opacity: refundingId === p.id ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                               >
-                                {isKr ? '환불 신청' : 'Request Refund'}
+                                {refundingId === p.id ? (
+                                  <>
+                                    <span style={{ width: 12, height: 12, border: `2px solid ${C.textSecondary}`, borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                                    {isKr ? '처리 중...' : 'Processing...'}
+                                  </>
+                                ) : (isKr ? '환불 신청' : 'Request Refund')}
                               </button>
                             </div>
                           )}
@@ -293,7 +319,7 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                           <button onClick={() => navigate(`/${locale}/community/${post.id}`)} style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, flex: 1 }}>
                             <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>{post.title}</div>
-                            <div style={{ fontSize: 12, color: C.textSecondary }}>{formatDate(post.created_at)} · {post.airline} · {post.route} · 💬 {post.comment_count || 0}</div>
+                            <div style={{ fontSize: 12, color: C.textSecondary }}>{formatDate(post.created_at)} · {post.airline} · {post.route} · 댓글 {post.comment_count || 0}</div>
                           </button>
                           <button 
                             onClick={() => post.id && handleDeletePost(post.id)}
@@ -344,6 +370,24 @@ export default function MyInfoPage({ user, t, locale, onLocaleChange, onLogin, o
             )}
           </>
         )}
+      </div>
+
+      {/* Footer / Legal Links */}
+      <div style={{ padding: '20px', textAlign: 'center', marginTop: 'auto', marginBottom: 60 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
+          <button onClick={() => navigate(`/${locale}/terms`)} style={{ background: 'none', border: 'none', color: C.textSecondary, fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+            {t.termsOfService || (isKr ? '이용약관' : 'Terms of Service')}
+          </button>
+          <button onClick={() => navigate(`/${locale}/privacy`)} style={{ background: 'none', border: 'none', color: C.textSecondary, fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+            {t.privacyPolicy || (isKr ? '개인정보 처리방침' : 'Privacy Policy')}
+          </button>
+          <a href="mailto:offbeat@gmail.com?subject=[FlyRefund Inquiry]" style={{ color: C.textSecondary, fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+            {t.contactUs || (isKr ? '문의하기' : 'Contact Us')}
+          </a>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: C.textSecondary, opacity: 0.6 }}>
+          © {new Date().getFullYear()} FlyRefund. All rights reserved.
+        </div>
       </div>
     </div>
   );

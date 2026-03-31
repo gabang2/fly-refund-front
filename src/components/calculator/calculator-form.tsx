@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { C } from "@/lib/constants";
 import { getAirlines, Airline } from "@/api/airlines";
 import type { ReasonKey, TimingKey, TicketCurrency } from "@/lib/calculator/engine";
+import { getJurisdiction } from "@/lib/calculator/engine";
+import { getAirport } from "@/lib/calculator/airports";
 
 const CURRENCIES: { value: TicketCurrency; label: string }[] = [
   { value: 'KRW', label: '₩ KRW' },
@@ -42,6 +44,7 @@ export function CalculatorForm({ t, locale, onCalculate, savedResult }: Calculat
   const [ticketPrice, setTicketPrice] = useState("");
   const [ticketCurrency, setTicketCurrency] = useState<TicketCurrency>('KRW');
   const [airlineList, setAirlineList] = useState<Airline[]>([]);
+  const [airportTooltip, setAirportTooltip] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -84,12 +87,24 @@ export function CalculatorForm({ t, locale, onCalculate, savedResult }: Calculat
     setIsOpen(false);
   };
 
+  // 현재 입력 조합의 관할권 동적 계산
+  const currentJurisdiction = (() => {
+    if (dep.length !== 3 || arr.length !== 3 || !selectedAirline) return null;
+    const depAirport = getAirport(dep);
+    const arrAirport = getAirport(arr);
+    if (!depAirport || !arrAirport) return null;
+    return getJurisdiction(depAirport.country, arrAirport.country, selectedAirline);
+  })();
+
+  const showTicketPrice = currentJurisdiction === 'Korea' || currentJurisdiction === 'GACA';
+
   const isValidAirline = !!selectedAirline && getAirlineName(selectedAirline) === searchTerm;
   const isValidDep = dep.length === 3;
   const isValidArr = arr.length === 3;
+  const isSameAirport = isValidDep && isValidArr && dep.toUpperCase() === arr.toUpperCase();
   const isReasonSelected = reasonIdx >= 0;
   const isTimingSelected = timingIdx >= 0;
-  const canSubmit = isValidAirline && isValidDep && isValidArr && isReasonSelected && isTimingSelected;
+  const canSubmit = isValidAirline && isValidDep && isValidArr && !isSameAirport && isReasonSelected && isTimingSelected;
 
   const handleSubmit = () => {
     if (!canSubmit || !selectedAirline || reasonIdx < 0 || timingIdx < 0) return;
@@ -139,32 +154,91 @@ export function CalculatorForm({ t, locale, onCalculate, savedResult }: Calculat
       </div>
 
       {/* 출발·도착 공항 자동완성 */}
-      <div style={{ display: "flex", gap: 10 }}>
-        <div style={{ flex: 1 }}>
-          <AirportField
-            label={t.depLabel}
-            placeholder={t.depPh}
-            value={dep}
-            onChange={setDep}
-            locale={locale}
-            errorMsg={airportError}
-          />
+      <div style={{ position: "relative" }}>
+        <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <AirportField
+              label={t.depLabel}
+              placeholder={t.depPh}
+              value={dep}
+              onChange={setDep}
+              locale={locale}
+              errorMsg={airportError}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <AirportField
+              label={t.arrLabel}
+              placeholder={t.arrPh}
+              value={arr}
+              onChange={setArr}
+              locale={locale}
+              errorMsg={airportError}
+            />
+          </div>
         </div>
-        <div style={{ flex: 1 }}>
-          <AirportField
-            label={t.arrLabel}
-            placeholder={t.arrPh}
-            value={arr}
-            onChange={setArr}
-            locale={locale}
-            errorMsg={airportError}
-          />
-        </div>
-      </div>
-      <div style={{ fontSize: 12, color: C.textSecondary, background: C.accentLight, borderRadius: 8, padding: "8px 12px" }}>
-        {t.directFlightNote}
-      </div>
 
+        {isSameAirport && (
+          <div style={{ fontSize: 11, color: C.warn, marginTop: 4 }}>
+            {locale === "kr" ? "출발지와 도착지가 같을 수 없습니다." : "Departure and arrival airports cannot be the same."}
+          </div>
+        )}
+
+        {/* 직항 안내 버튼 — 우측 하단 */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, position: "relative" }}>
+          <button
+            type="button"
+            onMouseEnter={() => setAirportTooltip(true)}
+            onMouseLeave={() => setAirportTooltip(false)}
+            onTouchStart={() => setAirportTooltip(v => !v)}
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 16, height: 16, borderRadius: "50%",
+              background: airportTooltip ? C.textSecondary : "transparent",
+              border: `1.5px solid ${C.textSecondary}`,
+              padding: 0, cursor: "pointer", flexShrink: 0,
+              color: airportTooltip ? "#fff" : C.textSecondary,
+              fontSize: 9, fontWeight: 700, fontStyle: "italic", lineHeight: 1,
+              transition: "background 0.15s, color 0.15s",
+            }}
+            aria-label="직항 안내"
+          >
+            i
+          </button>
+
+          {airportTooltip && (
+            <div
+              onMouseEnter={() => setAirportTooltip(true)}
+              onMouseLeave={() => setAirportTooltip(false)}
+              style={{
+                position: "absolute", bottom: "calc(100% + 8px)", right: 0, zIndex: 20,
+                background: C.textPrimary, color: "#fff",
+                borderRadius: 8, padding: "8px 12px",
+                fontSize: 11, lineHeight: 1.6,
+                width: "max-content", maxWidth: "min(280px, 80vw)",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #fff",
+                  fontSize: 8, fontWeight: 700, fontStyle: "italic", lineHeight: 1, flexShrink: 0, marginTop: 1,
+                }}>i</span>
+                <span>{t.directFlightNote}</span>
+              </div>
+              {/* 말풍선 꼭지 — 우측 하단 */}
+              <div style={{
+                position: "absolute", bottom: -6, right: 5,
+                width: 0, height: 0,
+                borderLeft: "6px solid transparent",
+                borderRight: "6px solid transparent",
+                borderTop: `6px solid ${C.textPrimary}`,
+              }} />
+            </div>
+          )}
+        </div>
+      </div>
       {/* 항공사 드롭다운 */}
       <div ref={dropdownRef} style={{ display: "flex", flexDirection: "column", gap: 6, position: "relative" }}>
         <label style={{ fontSize: 12, fontWeight: 500, color: C.textSecondary }}>{t.airlineLabel}</label>
@@ -233,23 +307,8 @@ export function CalculatorForm({ t, locale, onCalculate, savedResult }: Calculat
         </div>
       </div>
 
-      {/* 항공편 날짜 (선택) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <label style={{ fontSize: 12, fontWeight: 500, color: C.textSecondary }}>{t.flightDateLabel}</label>
-        <input
-          type="date"
-          value={flightDate}
-          onChange={(e) => setFlightDate(e.target.value)}
-          style={{
-            height: 44, border: `1px solid ${C.border}`, borderRadius: 8,
-            padding: "0 14px", fontSize: 14, color: C.textPrimary,
-            background: C.bg, outline: "none", boxSizing: "border-box", width: "100%",
-          }}
-        />
-      </div>
-
-      {/* 티켓 금액 (선택) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {/* 티켓 금액 — Korea/GACA 관할일 때만 노출 */}
+      {showTicketPrice && <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <label style={{ fontSize: 12, fontWeight: 500, color: C.textSecondary }}>{t.ticketPriceLabel}</label>
         <div style={{ display: "flex", gap: 6 }}>
           <select
@@ -278,7 +337,7 @@ export function CalculatorForm({ t, locale, onCalculate, savedResult }: Calculat
           />
         </div>
         <span style={{ fontSize: 11, color: C.textSecondary }}>{t.ticketPriceNote}</span>
-      </div>
+      </div>}
 
       <Btn
         onClick={handleSubmit}

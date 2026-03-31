@@ -4,24 +4,37 @@ import { supabase } from './supabaseClient';
  * 이메일을 통한 매직 링크 로그인 요청
  */
 export const signInWithEmail = async (email: string) => {
+  const redirectTo = window.location.origin;
   const { data, error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      // 로그인 후 돌아올 URL 설정 (현재 도메인 기준)
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: redirectTo,
     },
   });
   return { data, error };
+};
+
+const AFTER_LOGIN_REDIRECT_KEY = 'flyrefund_after_login_redirect';
+
+export const setAfterLoginRedirect = (path: string) => {
+  localStorage.setItem(AFTER_LOGIN_REDIRECT_KEY, path);
+};
+
+export const popAfterLoginRedirect = (): string | null => {
+  const path = localStorage.getItem(AFTER_LOGIN_REDIRECT_KEY);
+  localStorage.removeItem(AFTER_LOGIN_REDIRECT_KEY);
+  return path;
 };
 
 /**
  * 구글 계정으로 로그인 (OAuth)
  */
 export const signInWithGoogle = async () => {
+  const redirectTo = window.location.origin;
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: window.location.origin,
+      redirectTo,
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',

@@ -3,16 +3,18 @@ import { Btn } from "@/components/ui/button";
 import { C } from "@/lib/constants";
 import { getCommentsByPostId, createComment, deleteComment } from "@/api/comments";
 import { Comment } from "@/types/database";
+import { CalcSummaryCard } from "@/components/community/calc-summary-card";
 
 interface PostDetailProps {
   user?: any;
   post: any;
   t: any;
+  locale?: string;
   onEdit?: (post: any) => void;
   onDelete?: (id: number) => void;
 }
 
-export function PostDetail({ user, post, t, onEdit, onDelete }: PostDetailProps) {
+export function PostDetail({ user, post, t, locale, onEdit, onDelete }: PostDetailProps) {
   const [commentText, setCommentText] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,16 +74,12 @@ export function PostDetail({ user, post, t, onEdit, onDelete }: PostDetailProps)
   const authorName = post.author?.full_name || post.author?.email?.split('@')[0] || "User";
 
   return (
-    <div style={{ padding: "24px 20px 180px", background: "#fff", minHeight: "100%", boxSizing: "border-box" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", background: "#fff" }}>
+      <div style={{ padding: "24px 20px 32px", flex: 1, boxSizing: "border-box" }}>
       
-      {/* 1. 카테고리 & 더보기 메뉴 */}
+      {/* 1. 항공사/노선 & 더보기 메뉴 */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: post.success ? C.success : C.textSecondary, background: post.success ? C.successLight : "#f0f0f0", padding: "2px 8px", borderRadius: 4 }}>
-            {post.tag}
-          </span>
-          <span style={{ fontSize: 13, color: C.textSecondary, fontWeight: 500 }}>{post.airline} · {post.route}</span>
-        </div>
+        <span style={{ fontSize: 13, color: C.textSecondary, fontWeight: 500 }}>{post.airline} · {post.route}</span>
 
         {isPostAuthor && (
           <div style={{ position: "relative" }}>
@@ -132,18 +130,13 @@ export function PostDetail({ user, post, t, onEdit, onDelete }: PostDetailProps)
 
       {/* 4. 계산 결과 카드 */}
       {post.success && post.amt && (
-        <div style={{ background: "#f8f9fa", borderRadius: 12, padding: "16px", marginBottom: 24, border: `1px solid #eee` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: "#fff", padding: "2px 8px", borderRadius: 4, border: `1px solid ${C.accentLight}` }}>
-              {t.regLabel || "확인된 보상 규정"}
-            </span>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.success }}>
-              {post.amt} {t.successBadge.replace(" ✓", "")}
-            </div>
-          </div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: C.textPrimary }}>
-            ✈️ {post.route}
-          </div>
+        <div style={{ marginBottom: 24 }}>
+          <CalcSummaryCard
+            regulation={post.result_data?.regulation}
+            amt={post.amt}
+            route={post.route}
+            locale={locale}
+          />
         </div>
       )}
 
@@ -216,48 +209,50 @@ export function PostDetail({ user, post, t, onEdit, onDelete }: PostDetailProps)
         </div>
       )}
 
-      {/* 댓글 입력창 (하단 고정) */}
-      <form 
+      </div>
+
+      {/* 댓글 입력창 — 스크롤 컨테이너 하단에 sticky */}
+      <form
         onSubmit={handlePostComment}
-        style={{ 
-          position: "fixed", 
-          bottom: 72, 
-          left: "50%", 
-          transform: "translateX(-50%)", 
-          width: "100%",
-          maxWidth: 430,
-          background: "#fff", 
-          borderTop: `1px solid #eee`, 
-          padding: "12px 16px env(safe-area-inset-bottom, 12px)",
-          boxSizing: "border-box",
-          zIndex: 1000
+        style={{
+          position: "sticky",
+          bottom: 0,
+          background: "#fff",
+          borderTop: `1px solid #ebebeb`,
+          padding: "10px 16px 14px",
+          boxSizing: "border-box"
         }}
       >
-        <div style={{ 
-          display: "flex", 
-          gap: 10, 
-          background: "#f5f5f5", 
-          padding: "4px 4px 4px 12px", 
-          borderRadius: 24, 
-          alignItems: "center"
+        <div style={{
+          display: "flex",
+          gap: 8,
+          background: "#f6f6f6",
+          padding: "6px 6px 6px 14px",
+          borderRadius: 26,
+          alignItems: "center",
+          border: "1px solid #e8e8e8"
         }}>
-          <input 
-            value={commentText} 
-            onChange={e => setCommentText(e.target.value)} 
-            placeholder={user ? (t.commentPlaceholder || "댓글을 남겨보세요") : (t.loginRequired || "로그인 후 이용 가능합니다")} 
+          <input
+            value={commentText}
+            onChange={e => setCommentText(e.target.value)}
+            placeholder={user ? (t.commentPlaceholder || "댓글을 남겨보세요") : (t.loginRequired || "로그인 후 이용 가능합니다")}
             disabled={!user || submitting}
-            style={{ 
-              flex: 1, border: "none", background: "none", fontSize: 14, outline: "none", height: 36, color: C.textPrimary,
-              WebkitAppearance: "none"
-            }} 
+            style={{
+              flex: 1, border: "none", background: "none", fontSize: 14, outline: "none",
+              height: 34, color: C.textPrimary, WebkitAppearance: "none",
+              minWidth: 0
+            }}
           />
-          <button 
+          <button
             type="submit"
             disabled={!user || !commentText.trim() || submitting}
-            style={{ 
-              background: (!user || !commentText.trim() || submitting) ? "#ccc" : C.accent, 
-              color: "#fff", border: "none", borderRadius: 20, height: 32, padding: "0 16px", fontSize: 13, fontWeight: 600,
-              cursor: (!user || !commentText.trim() || submitting) ? "default" : "pointer"
+            style={{
+              background: (!user || !commentText.trim() || submitting) ? "#d0d0d0" : C.accent,
+              color: "#fff", border: "none", borderRadius: 20,
+              height: 34, padding: "0 18px", fontSize: 13, fontWeight: 600,
+              cursor: (!user || !commentText.trim() || submitting) ? "default" : "pointer",
+              flexShrink: 0,
+              transition: "background 0.15s"
             }}
           >
             {submitting ? "..." : (t.commentBtn || "전송")}

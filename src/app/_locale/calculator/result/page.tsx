@@ -1,17 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { PolarEmbedCheckout } from "@polar-sh/checkout/embed";
 import { ResultCard } from "@/components/calculator/result-card";
-import { SavedBanner } from "@/components/ui/saved-banner";
 import { Card } from "@/components/ui/card";
 import { Btn } from "@/components/ui/button";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { C } from "@/lib/constants";
 import { saveCalculation, getCalculationById } from "@/api/calculations";
 import { savePurchase, getPurchasesByCalcId, Purchase } from "@/api/purchases";
-import { analyzeCompensation, generateAIEmail } from "@/api/analyze";
-import { generateEmailDraft } from "@/lib/email-draft";
 import { ShareActionCard } from "@/components/ui/share-action-card";
 import { supabase } from "@/api/supabaseClient";
+import { AnalysisRenderer } from "@/components/calculator/analysis-renderer";
+import { AiLoading } from "@/components/ui/ai-loading";
 
 interface ResultPageProps {
   user?: any;
@@ -40,36 +39,34 @@ export default function ResultPage({
   onBack, onLocaleChange, onCalcSaved, onLogin, onShare,
   setResult, setInput 
 }: ResultPageProps) {
-  const [payingFor, setPayingFor] = useState<'detailed_analysis' | 'email_draft' | 'flight_alert' | null>(null);
+  const [payingFor, setPayingFor] = useState<'detailed_analysis' | 'email_draft' | null>(null);
   const [paying, setPaying] = useState(false);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const isAnalyzingRef = useRef(false);
-  const [analysisRetries, setAnalysisRetries] = useState(0);
-  const [emailRetries, setEmailRetries] = useState(0);
   const savedRef = useRef(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isKr = locale === 'kr';
 
-  // 데이터 가공 (result가 있을 때만 유효)
+  // 데이터 가공 - result에 없는 필드는 input에서 fallback
   const REASON_KEYS = ['airline_fault', 'weather', 'extraordinary'];
   const TIMING_KEYS = ['under7days', '7to14days', 'over14days'];
-  
-  const reasonText = result ? (t.reasons[REASON_KEYS.indexOf(result.reason)] ?? result.reason) : '';
-  const timingText = result ? (t.timings[TIMING_KEYS.indexOf(result.timing)] ?? result.timing) : '';
-  const airlineName = result ? (
-    typeof result.airline === 'object'
-      ? (isKr ? result.airline?.name_kr : result.airline?.name_en)
-      : result.airlineName ?? result.airline ?? ''
-  ) : '';
+
+  const dep = result?.dep ?? input?.dep ?? '';
+  const arr = result?.arr ?? input?.arr ?? '';
+  const reason = result?.reason ?? input?.reason;
+  const reasonText = reason ? (t.reasons[REASON_KEYS.indexOf(reason)] ?? reason) : '';
+  const timing = result?.timing ?? input?.timing;
+  const timingText = timing ? (t.timings[TIMING_KEYS.indexOf(timing)] ?? timing) : '';
+  const airline = result?.airline ?? input?.airline;
+  const airlineName = airline
+    ? (typeof airline === 'object'
+        ? (isKr ? airline?.name_kr : airline?.name_en)
+        : result?.airlineName ?? input?.airlineName ?? airline)
+    : '';
 
   const analysisPurchase = purchases.find(p => p.product_type === 'detailed_analysis');
   const emailPurchase = purchases.find(p => p.product_type === 'email_draft');
-  const alertPurchase = purchases.find(p => p.product_type === 'flight_alert');
-
-  const isFutureDate = input?.flightDate ? new Date(input.flightDate) > new Date() : false;
-  const shouldShowAlert = alertPurchase || (!!input?.flightDate && isFutureDate);
 
   // 1. 데이터 복구
   useEffect(() => {
@@ -105,7 +102,7 @@ export default function ResultPage({
       saveCalculation({
         user_id: user.id,
         input_data: input ?? { dep: result.dep, arr: result.arr, reason: result.reason, timing: result.timing },
-        result_data: { amount: result.amount, currency: result.currency, regulation: result.regulation },
+        result_data: result,
       }).then(({ data }) => {
         if (data?.id) onCalcSaved?.(data.id);
       });
@@ -145,7 +142,11 @@ export default function ResultPage({
           setPurchases(existing!.filter(p => p.status === 'paid'));
           setPaying(false);
           isFulfillingRef.current = false;
-          window.history.replaceState({}, '', window.location.pathname);
+          const cleanParams2 = new URLSearchParams(window.location.search);
+          cleanParams2.delete('success');
+          cleanParams2.delete('product_type');
+          const cleanSearch2 = cleanParams2.toString();
+          window.history.replaceState({}, '', window.location.pathname + (cleanSearch2 ? `?${cleanSearch2}` : ''));
           return;
         }
 
@@ -156,114 +157,67 @@ export default function ResultPage({
           calc_id: calcId,
           product_type: productType,
           status: 'paid',
+          ai_status: 'PROCESSING',
           price_label: isKr ? "₩500" : "$0.50",
           extra_data: { source: 'frontend_fallback' }
         });
 
         if (!error && newRecord) {
           setPurchases(prev => [...prev, newRecord]);
+          // AI 처리 트리거
+          supabase.functions.invoke('process-ai-result', {
+            body: { purchaseId: newRecord.id }
+          }).catch(console.error);
         }
         
         setPaying(false);
         isFulfillingRef.current = false;
-        window.history.replaceState({}, '', window.location.pathname);
+        // calc_id는 유지하고 success, product_type만 제거
+        const cleanParams = new URLSearchParams(window.location.search);
+        cleanParams.delete('success');
+        cleanParams.delete('product_type');
+        const cleanSearch = cleanParams.toString();
+        window.history.replaceState({}, '', window.location.pathname + (cleanSearch ? `?${cleanSearch}` : ''));
       };
       fulfillPurchase();
     }
   }, [user, calcId]);
 
-  // 6. AI 분석 직접 실행
+  // 6. AI 처리 상태 폴링 (백엔드에서 비동기 처리 중인 경우)
   useEffect(() => {
-    const needsAnalysis = !!analysisPurchase && !analysisPurchase.extra_data?.analysis_kr && result && !isAnalyzing && !isAnalyzingRef.current && analysisRetries < 3;
-    
-    if (needsAnalysis) {
-      const runAnalysis = async () => {
-        if (isAnalyzingRef.current) return;
-        isAnalyzingRef.current = true;
-        setIsAnalyzing(true);
-        console.log("Starting AI Analysis...");
-        
-        try {
-          const flightDetails = {
-            dep: result.dep, arr: result.arr, 
-            airlineName: typeof result.airline === 'object' ? (isKr ? result.airline.name_kr : result.airline.name_en) : result.airlineName,
-            reason: result.reason, timing: result.timing, distanceKm: result.distanceKm,
-            jurisdiction: result.jurisdiction, regulation: result.regulation,
-            amount: result.amount, currency: result.currency,
-            flightDate: input?.flightDate, ticketPrice: input?.ticketPrice,
-          };
+    const hasProcessingPurchase = purchases.some(
+      p => p.ai_status && !['COMPLETED', 'REFUND'].includes(p.ai_status)
+    );
 
-          const { analysis_kr, analysis_en, error } = await analyzeCompensation(flightDetails, locale);
-          
-          if (!error && (analysis_kr || analysis_en)) {
-            const updatedExtra = { ...analysisPurchase.extra_data, analysis_kr, analysis_en };
-            setPurchases(prev => prev.map(p => p.id === analysisPurchase.id ? { ...p, extra_data: updatedExtra } : p));
-            await supabase.from('purchases').update({ extra_data: updatedExtra }).eq('id', analysisPurchase.id);
-            setAnalysisRetries(0);
-          } else {
-            console.error("AI Analysis failed, retry scheduled.");
-            setTimeout(() => setAnalysisRetries(prev => prev + 1), 10000);
+    if (hasProcessingPurchase && calcId) {
+      pollingRef.current = setInterval(async () => {
+        const { data } = await getPurchasesByCalcId(calcId);
+        if (data) {
+          setPurchases(data.filter(p => p.status === 'paid'));
+          const stillProcessing = data.some(
+            p => p.status === 'paid' && p.ai_status && !['COMPLETED', 'REFUND'].includes(p.ai_status)
+          );
+          if (!stillProcessing && pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
           }
-        } catch (e) {
-          console.error("AI Analysis Error:", e);
-          setTimeout(() => setAnalysisRetries(prev => prev + 1), 10000);
-        } finally {
-          setIsAnalyzing(false);
-          isAnalyzingRef.current = false;
         }
-      };
-      runAnalysis();
+      }, 4000);
     }
-  }, [analysisPurchase?.id, !!analysisPurchase?.extra_data?.analysis_kr, result, analysisRetries]);
 
-  // 7. 이메일 자동 생성
-  useEffect(() => {
-    const needsEmail = !!emailPurchase && !emailPurchase.extra_data?.email_kr && result && !isAnalyzing && !isAnalyzingRef.current && emailRetries < 3;
-    
-    if (needsEmail) {
-      const runEmailGen = async () => {
-        if (isAnalyzingRef.current) return;
-        isAnalyzingRef.current = true;
-        setIsAnalyzing(true);
-        console.log("Starting Email Generation...");
-
-        try {
-          const flightDetails = {
-            dep: result.dep, arr: result.arr,
-            airlineName: typeof result.airline === 'object' ? (isKr ? result.airline.name_kr : result.airline.name_en) : result.airlineName,
-            reason: result.reason, regulation: result.regulation,
-            amount: result.amount, currency: result.currency,
-            analysis: analysisPurchase?.extra_data?.analysis_kr
-          };
-
-          const { email_kr, email_en, error } = await generateAIEmail(flightDetails, locale);
-          
-          if (!error && (email_kr || email_en)) {
-            const updatedExtra = { ...emailPurchase.extra_data, email_kr, email_en };
-            setPurchases(prev => prev.map(p => p.id === emailPurchase.id ? { ...p, extra_data: updatedExtra } : p));
-            await supabase.from('purchases').update({ extra_data: updatedExtra }).eq('id', emailPurchase.id);
-            setEmailRetries(0);
-          } else {
-            setTimeout(() => setEmailRetries(prev => prev + 1), 10000);
-          }
-        } catch (e) {
-          console.error("Email Gen Error:", e);
-          setTimeout(() => setEmailRetries(prev => prev + 1), 10000);
-        } finally {
-          setIsAnalyzing(false);
-          isAnalyzingRef.current = false;
-        }
-      };
-      runEmailGen();
-    }
-  }, [emailPurchase?.id, !!emailPurchase?.extra_data?.email_kr, !!analysisPurchase?.extra_data?.analysis_kr, result, emailRetries]);
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [purchases.map(p => p.ai_status).join(','), calcId]);
 
   const handlePay = async () => {
     if (!payingFor || !user) return;
     let productId = '';
     if (payingFor === 'detailed_analysis') productId = isKr ? import.meta.env.VITE_POLAR_DETAILED_INFO_PRICE_ID_KR : import.meta.env.VITE_POLAR_DETAILED_INFO_PRICE_ID_US;
     else if (payingFor === 'email_draft') productId = isKr ? import.meta.env.VITE_POLAR_EMAIL_DRAFT_PRICE_ID_KR : import.meta.env.VITE_POLAR_EMAIL_DRAFT_PRICE_ID_US;
-    else if (payingFor === 'flight_alert') productId = isKr ? import.meta.env.VITE_POLAR_FLIGHT_ALERT_PRICE_ID_KR : import.meta.env.VITE_POLAR_FLIGHT_ALERT_PRICE_ID_US;
 
     if (!productId) return;
     const successUrl = `${window.location.origin}/${locale}/calculator/result?success=true&product_type=${payingFor}&calc_id=${calcId}`;
@@ -290,7 +244,20 @@ export default function ResultPage({
     }
   };
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>{isKr ? '로딩 중...' : 'Loading...'}</div>;
+  if (loading) return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.bg }}>
+      <div style={{ background: C.bg, borderBottom: `1px solid ${C.border}`, padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 14, fontWeight: 500 }}>{t.resultBack}</button>
+        <LocaleSwitcher currentLocale={locale} onLocaleChange={onLocaleChange} />
+      </div>
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 40, height: 40, border: `3px solid ${C.accentLight}`, borderTop: `3px solid ${C.accent}`, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
+          <p style={{ fontSize: 14, color: C.textSecondary }}>{isKr ? '결과를 분석하고 있습니다...' : 'Analyzing results...'}</p>
+        </div>
+      </div>
+    </div>
+  );
   if (!result) return null;
 
   const priceLabel = PRICE_LABEL[locale] ?? PRICE_LABEL.kr;
@@ -304,25 +271,25 @@ export default function ResultPage({
 
       <div style={{ padding: '16px 20px 100px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ background: C.accentLight, borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 500, color: C.accent }}>
-          ✈ {result.dep} → {result.arr} · {airlineName} · {reasonText}
+          ✈ {dep} → {arr} · {airlineName} · {reasonText}
         </div>
 
         <ResultCard t={t} result={result} />
-        <SavedBanner text={t.savedResult} />
 
         {/* 상세 분석 카드 */}
         <Card style={{ padding: 16 }}>
           {analysisPurchase ? (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 20 }}>🔍</span>
-                <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{isKr ? '상세 AI 분석 결과' : 'Detailed AI Analysis'}</div>
+                <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{isKr ? '상세 분석 결과' : 'Detailed Analysis'}</div>
                 <div style={{ background: C.successLight, color: C.success, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 100 }}>{isKr ? '결제완료' : 'Paid'}</div>
               </div>
-              <div style={{ background: C.surface, borderRadius: 10, padding: 16, fontSize: 13, lineHeight: 1.9, color: C.textPrimary, whiteSpace: 'pre-wrap', maxHeight: 400, overflowY: 'auto' }}>
-                {isKr 
-                  ? (analysisPurchase.extra_data?.analysis_kr || (isAnalyzing ? 'AI 분석 중입니다...' : '데이터를 불러오는 중...'))
-                  : (analysisPurchase.extra_data?.analysis_en || (isAnalyzing ? 'Analyzing with AI...' : 'Loading analysis...'))}
+              <div style={{ background: C.surface, borderRadius: 10, padding: 16 }}>
+                {analysisPurchase.ai_status === 'REFUND'
+                  ? <p style={{ fontSize: 13, color: C.textSecondary, margin: 0 }}>{isKr ? '⚠️ AI 분석 처리 실패로 환불 처리되었습니다.' : '⚠️ AI analysis failed. Refund has been issued.'}</p>
+                  : analysisPurchase.ai_status === 'COMPLETED'
+                    ? <AnalysisRenderer text={isKr ? analysisPurchase.extra_data?.analysis_kr : analysisPurchase.extra_data?.analysis_en} />
+                    : <AiLoading isKr={isKr} />}
               </div>
 
               {/* 이메일 영역 */}
@@ -330,14 +297,15 @@ export default function ResultPage({
                 {emailPurchase ? (
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                      <span style={{ fontSize: 16 }}>📧</span>
                       <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: C.textPrimary }}>{t.emailResultTitle}</div>
                       <div style={{ background: C.successLight, color: C.success, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 100 }}>{isKr ? '결제완료' : 'Paid'}</div>
                     </div>
-                    <div style={{ background: C.bg, borderRadius: 8, padding: 12, fontSize: 12, lineHeight: 1.7, color: C.textPrimary, whiteSpace: 'pre-wrap', maxHeight: 180, overflowY: 'auto' }}>
-                      {isKr 
-                        ? (emailPurchase.extra_data?.email_kr || (isAnalyzing ? '생성 중...' : '데이터 확인 중...'))
-                        : (emailPurchase.extra_data?.email_en || (isAnalyzing ? 'Generating...' : 'Loading...'))}
+                    <div style={{ background: C.bg, borderRadius: 8, padding: 12, fontSize: 12, lineHeight: 1.7, color: C.textPrimary, whiteSpace: 'pre-wrap' }}>
+                      {emailPurchase.ai_status === 'REFUND'
+                        ? (isKr ? '⚠️ 이메일 생성 실패로 환불 처리되었습니다.' : '⚠️ Email generation failed. Refund has been issued.')
+                        : emailPurchase.ai_status === 'COMPLETED'
+                          ? (isKr ? emailPurchase.extra_data?.email_kr : emailPurchase.extra_data?.email_en)
+                          : <AiLoading isKr={isKr} />}
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                       <button onClick={() => { navigator.clipboard.writeText(isKr ? emailPurchase.extra_data?.email_kr : emailPurchase.extra_data?.email_en); setCopiedEmail(true); setTimeout(()=>setCopiedEmail(false), 2000); }} style={{ flex: 1, height: 34, background: copiedEmail ? C.successLight : C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: copiedEmail ? C.success : C.accent, fontSize: 12, fontWeight: 600 }}>{copiedEmail ? t.copiedBtn : t.copyBtn}</button>
@@ -346,7 +314,6 @@ export default function ResultPage({
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 22 }}>📧</span>
                     <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary }}>{t.emailTitle}</div><div style={{ fontSize: 11, color: C.textSecondary }}>{t.emailDesc}</div></div>
                     <button onClick={() => user ? setPayingFor('email_draft') : onLogin()} style={{ background: C.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700 }}>{priceLabel}</button>
                   </div>
@@ -355,31 +322,11 @@ export default function ResultPage({
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <span style={{ fontSize: 28 }}>🔍</span>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{isKr ? '상세 AI 분석 보기' : 'Get Detailed AI Analysis'}</div><div style={{ fontSize: 12, color: C.textSecondary }}>{isKr ? '보상 가능성, 청구 절차 AI 분석' : 'AI Analysis of eligibility & claims'}</div></div>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{isKr ? '상세 분석 보기' : 'Get Detailed Analysis'}</div><div style={{ fontSize: 12, color: C.textSecondary }}>{isKr ? '보상 가능성 및 청구 절차 분석' : 'Analysis of eligibility & claims'}</div></div>
               <button onClick={() => user ? setPayingFor('detailed_analysis') : onLogin()} style={{ background: C.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700 }}>{priceLabel}</button>
             </div>
           )}
         </Card>
-
-        {/* 최저가 알림 카드 */}
-        {shouldShowAlert && (
-          <Card style={{ padding: 16 }}>
-            {alertPurchase ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <span style={{ fontSize: 28 }}>✅</span>
-                <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{isKr ? '최저가 알림 등록 완료' : 'Price Alert Registered'}</div><div style={{ fontSize: 12, color: C.textSecondary }}>{result.dep} → {result.arr} · {isKr ? '3일간 매일 이메일' : 'Daily email for 3 days'}</div></div>
-                <div style={{ background: C.successLight, color: C.success, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 100 }}>{isKr ? '결제완료' : 'Paid'}</div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <span style={{ fontSize: 28 }}>✈️</span>
-                <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{t.alertTitle}</div><div style={{ fontSize: 12, color: C.textSecondary }}>{isKr ? '3일간 매일 최저가 이메일' : 'Daily lowest fares for 3 days'}</div></div>
-                <button onClick={() => user ? setPayingFor('flight_alert') : onLogin()} style={{ background: C.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700 }}>{priceLabel}</button>
-              </div>
-            )}
-          </Card>
-        )}
 
         <ShareActionCard onShare={onShare || (() => {})} locale={locale} t={t} />
       </div>
@@ -389,8 +336,8 @@ export default function ResultPage({
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !paying && setPayingFor(null)}>
           <div style={{ background: C.bg, borderRadius: '20px 20px 0 0', padding: '28px 24px 40px', width: '100%' }} onClick={e => e.stopPropagation()}>
             <div style={{ width: 40, height: 4, background: C.border, borderRadius: 4, margin: '0 auto 24px' }} />
-            <div style={{ fontSize: 18, fontWeight: 700, color: C.textPrimary, marginBottom: 6 }}>{payingFor === 'detailed_analysis' ? (isKr ? '상세 AI 분석' : 'Detailed AI Analysis') : payingFor === 'email_draft' ? (isKr ? '이메일 초안 생성' : 'Generate Email Draft') : (isKr ? '최저가 항공 알림' : 'Flight Price Alert')}</div>
-            <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 24 }}>{isKr ? '보상 전문가 AI가 당신의 사례를 분석합니다.' : 'AI expert will analyze your case.'}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.textPrimary, marginBottom: 6 }}>{payingFor === 'detailed_analysis' ? (isKr ? '상세 분석' : 'Detailed Analysis') : (isKr ? '이메일 초안 생성' : 'Generate Email Draft')}</div>
+            <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 24 }}>{isKr ? '항공 보상 규정에 따라 사례를 분석합니다.' : 'Your case will be analyzed against aviation regulations.'}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}><span style={{ fontSize: 12, color: C.textSecondary }}>Powered by</span><span style={{ fontSize: 14, fontWeight: 700, color: C.textPrimary }}>Polar</span></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: C.surface, borderRadius: 12, padding: '14px 16px', marginBottom: 20 }}><span style={{ fontSize: 14, color: C.textPrimary }}>{isKr ? '결제 금액' : 'Total Price'}</span><span style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{priceLabel}</span></div>
             <Btn onClick={handlePay} disabled={paying} sx={{ width: '100%', marginBottom: 12 }}>{paying ? (isKr ? '처리 중...' : 'Processing...') : (isKr ? `${priceLabel} 결제하기` : `Pay ${priceLabel}`)}</Btn>
