@@ -4,7 +4,7 @@ import { ResultCard } from "@/components/calculator/result-card";
 import { Card } from "@/components/ui/card";
 import { Btn } from "@/components/ui/button";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
-import { C } from "@/lib/constants";
+import { C, PAYMENT_ENABLED } from "@/lib/constants";
 import { saveCalculation, getCalculationById } from "@/api/calculations";
 import { savePurchase, getPurchasesByCalcId, Purchase } from "@/api/purchases";
 import { ShareActionCard } from "@/components/ui/share-action-card";
@@ -213,8 +213,43 @@ export default function ResultPage({
     };
   }, [purchases.map(p => p.ai_status).join(','), calcId]);
 
+  // 무료 제공: 결제 없이 바로 AI 처리 실행
+  const handleFree = async (productType: 'detailed_analysis' | 'email_draft') => {
+    if (!user || !calcId) return;
+    setPaying(true);
+    try {
+      const { data: newRecord, error } = await savePurchase({
+        user_id: user.id,
+        calc_id: calcId,
+        product_type: productType,
+        status: 'paid',
+        ai_status: 'PROCESSING',
+        price_label: isKr ? '무료' : 'Free',
+        extra_data: { source: 'free' }
+      });
+      if (!error && newRecord) {
+        setPurchases(prev => [...prev, newRecord]);
+        supabase.functions.invoke('process-ai-result', {
+          body: { purchaseId: newRecord.id }
+        }).catch(console.error);
+      }
+    } catch (err: any) {
+      alert(err.message || "Error");
+    } finally {
+      setPaying(false);
+    }
+  };
+
   const handlePay = async () => {
     if (!payingFor || !user) return;
+
+    // 결제 미승인 상태: 무료 제공
+    if (!PAYMENT_ENABLED) {
+      await handleFree(payingFor);
+      setPayingFor(null);
+      return;
+    }
+
     let productId = '';
     if (payingFor === 'detailed_analysis') productId = isKr ? import.meta.env.VITE_POLAR_DETAILED_INFO_PRICE_ID_KR : import.meta.env.VITE_POLAR_DETAILED_INFO_PRICE_ID_US;
     else if (payingFor === 'email_draft') productId = isKr ? import.meta.env.VITE_POLAR_EMAIL_DRAFT_PRICE_ID_KR : import.meta.env.VITE_POLAR_EMAIL_DRAFT_PRICE_ID_US;
@@ -224,16 +259,15 @@ export default function ResultPage({
     setPaying(true);
 
     try {
-      // 샌드박스 환경에서는 도메인을 sandbox.polar.sh로 명시해야 할 수 있습니다.
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { 
-          priceId: productId, 
-          successUrl, 
-          userId: user.id, 
-          calcId, 
-          productType: payingFor, 
+        body: {
+          priceId: productId,
+          successUrl,
+          userId: user.id,
+          calcId,
+          productType: payingFor,
           customerEmail: user.email,
-          isSandbox: true // 샌드박스 플래그 추가
+          isSandbox: true
         }
       });
       if (error) throw error;
@@ -260,7 +294,7 @@ export default function ResultPage({
   );
   if (!result) return null;
 
-  const priceLabel = PRICE_LABEL[locale] ?? PRICE_LABEL.kr;
+  const priceLabel = PAYMENT_ENABLED ? (PRICE_LABEL[locale] ?? PRICE_LABEL.kr) : (isKr ? '무료' : 'Free');
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg }}>
@@ -339,8 +373,8 @@ export default function ResultPage({
             <div style={{ fontSize: 18, fontWeight: 700, color: C.textPrimary, marginBottom: 6 }}>{payingFor === 'detailed_analysis' ? (isKr ? '상세 분석' : 'Detailed Analysis') : (isKr ? '이메일 초안 생성' : 'Generate Email Draft')}</div>
             <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 24 }}>{isKr ? '항공 보상 규정에 따라 사례를 분석합니다.' : 'Your case will be analyzed against aviation regulations.'}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}><span style={{ fontSize: 12, color: C.textSecondary }}>Powered by</span><span style={{ fontSize: 14, fontWeight: 700, color: C.textPrimary }}>Polar</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: C.surface, borderRadius: 12, padding: '14px 16px', marginBottom: 20 }}><span style={{ fontSize: 14, color: C.textPrimary }}>{isKr ? '결제 금액' : 'Total Price'}</span><span style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{priceLabel}</span></div>
-            <Btn onClick={handlePay} disabled={paying} sx={{ width: '100%', marginBottom: 12 }}>{paying ? (isKr ? '처리 중...' : 'Processing...') : (isKr ? `${priceLabel} 결제하기` : `Pay ${priceLabel}`)}</Btn>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: C.surface, borderRadius: 12, padding: '14px 16px', marginBottom: 20 }}><span style={{ fontSize: 14, color: C.textPrimary }}>{isKr ? (PAYMENT_ENABLED ? '결제 금액' : '금액') : (PAYMENT_ENABLED ? 'Total Price' : 'Price')}</span><span style={{ fontSize: 18, fontWeight: 800, color: PAYMENT_ENABLED ? C.textPrimary : C.success }}>{priceLabel}</span></div>
+            <Btn onClick={handlePay} disabled={paying} sx={{ width: '100%', marginBottom: 12 }}>{paying ? (isKr ? '처리 중...' : 'Processing...') : (PAYMENT_ENABLED ? (isKr ? `${priceLabel} 결제하기` : `Pay ${priceLabel}`) : (isKr ? '무료로 분석 받기' : 'Get Free Analysis'))}</Btn>
             <button onClick={() => !paying && setPayingFor(null)} style={{ width: '100%', height: 44, background: 'none', border: 'none', color: C.textSecondary, fontSize: 14 }}>{isKr ? '취소' : 'Cancel'}</button>
           </div>
         </div>
