@@ -11,19 +11,20 @@ interface LayoutProps {
 }
 
 export default function LocaleLayout({ children, params, activeTab, onTabChange, t }: LayoutProps) {
+  const NAV_HEIGHT = 72;
+  const bottomPadding = `calc(${NAV_HEIGHT}px + env(safe-area-inset-bottom))`;
+
   return (
     <div style={{ 
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Segoe UI', sans-serif", 
-      height: "100vh", 
-      height: "100dvh",
-      width: "100vw",
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
       display: "flex", 
       justifyContent: "center", 
       background: "#E2DDD7",
-      overflow: "hidden", // Keep this to prevent background scroll
-      position: "fixed", // Use fixed to ensure it stays in viewport
-      top: 0,
-      left: 0
+      overflow: "hidden"
     }}>
       <div style={{ 
         width: "min(430px, 100vw)", 
@@ -33,7 +34,7 @@ export default function LocaleLayout({ children, params, activeTab, onTabChange,
         background: C.surface, 
         boxShadow: "0 0 40px rgba(0,0,0,.12)",
         position: "relative",
-        overflow: "hidden" // Ensure children don't bleed out
+        overflow: "hidden"
       }}>
         {/* Scrollable Center Content */}
         <div style={{ 
@@ -41,25 +42,24 @@ export default function LocaleLayout({ children, params, activeTab, onTabChange,
           overflowY: "auto", 
           WebkitOverflowScrolling: "touch",
           background: C.surface,
-          paddingBottom: "calc(80px + env(safe-area-inset-bottom))",
           overscrollBehavior: "contain",
           width: "100%",
-          display: "flex",
-          flexDirection: "column"
+          paddingBottom: bottomPadding, // Reserve space for the absolute nav
         }}>
           {children}
         </div>
 
-        {/* Fixed Footer: Stays at the bottom of the container */}
+        {/* Navigation Bar: Absolute positioned at the bottom of the container */}
         <div style={{ 
-          position: "absolute", // Changed from fixed to absolute to be relative to the phone container
+          position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
-          zIndex: 100, 
+          height: bottomPadding,
+          zIndex: 9999, // Ensure it's on top of everything
           background: C.bg,
           borderTop: `1px solid ${C.border}`,
-          boxShadow: "0 -2px 10px rgba(0,0,0,0.05)"
+          boxShadow: "0 -2px 10px rgba(0,0,0,0.05)",
         }}>
           <BottomNav active={activeTab} onTab={onTabChange} labels={{ home: t.navHome || "홈", community: t.navCommunity || "커뮤니티", myInfo: t.navMyInfo || "내정보" }} />
         </div>

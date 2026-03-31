@@ -42,15 +42,14 @@ export function BottomNav({ active, onTab, labels }: BottomNavProps) {
 
   return (
     <div style={{ 
+      height: "100%",
       minHeight: 72, 
       paddingBottom: "env(safe-area-inset-bottom)", 
       background: C.bg, 
       display: "flex", 
-      alignItems: "flex-start", 
-      paddingTop: 10, 
+      alignItems: "stretch", 
       flexShrink: 0,
       width: "100%",
-      boxShadow: "0 -2px 10px rgba(0,0,0,0.03)"
     }}>
       {tabs.map((tb, i) => {
         const color = active === i ? C.accent : C.textSecondary;
@@ -67,11 +66,14 @@ export function BottomNav({ active, onTab, labels }: BottomNavProps) {
               display: "flex", 
               flexDirection: "column", 
               alignItems: "center", 
+              justifyContent: "center",
               gap: 4,
               padding: "4px 0"
             }}
           >
-            <Icon color={color} />
+            <div style={{ height: 24, display: 'flex', alignItems: 'center' }}>
+              <Icon color={color} />
+            </div>
             <span style={{ fontSize: 10, fontWeight: active === i ? 600 : 400, color, transition: "color 0.2s" }}>{tb.label}</span>
           </button>
         );
